@@ -1,0 +1,10 @@
+[provider]
+cluster = "localnet"
+wallet = "/home/powerconstruct/.config/solana/id.json"
+
+[programs.localnet]
+check_creator = "HmbTLCmaGvZhKnn1Zfa1JVnp7vkMV4DYVxPLWBVoN65L"
+prize_pool_contract = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+
+[scripts]
+test = "mocha -t 1000000 tests/"
