@@ -47,10 +47,6 @@ pub mod prize_pool_contract {
         let game = &mut ctx.accounts.game;
         game.winner_check = *ctx.accounts.winner_check.to_account_info().key;
 
-        // let winner_vault = match ctx.accounts.winner_check.to_account_info().key {
-        //     ctx.accounts.player_1_check.to_account_info().key => ctx.accounts.player_1_check.to_account_info().key,
-        //     ctx.accounts.player_1_check.to_account_info().key => ctx.accounts.player_1_check.to_account_info().key,
-        // };
         let loser = &mut ctx.accounts.loser_check;
         let winner = &mut ctx.accounts.winner_check;
         loser.to = winner.vault;
@@ -66,6 +62,7 @@ pub mod prize_pool_contract {
         let cpi_program = ctx.accounts.token_program.clone();
         let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer);
         token::transfer(cpi_ctx, loser.amount)?;
+
         // Burn the check for one time use.
         loser.burned = true;
         loser.amount = 0;
