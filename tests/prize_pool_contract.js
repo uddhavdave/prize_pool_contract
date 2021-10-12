@@ -16,6 +16,7 @@ describe('prize_pool_contract', () => {
 
   let mint = null;
   let god = null;
+  let receiver = null;
 
   it("Sets up initial test state", async () => {
     const [_mint, _god] = await serumCmn.createMintAndVault(
@@ -24,24 +25,16 @@ describe('prize_pool_contract', () => {
     );
     mint = _mint;
     god = _god;
+
+    receiver = await serumCmn.createTokenAccount(
+      program.provider,
+      mint,
+      program.provider.wallet.publicKey
+    );
   });
 
   let check1Signer = null;
   let check2Signer = null;
-
-  it('Initialize Match', async () => {
-    const tx = await program.rpc.initialize({
-      accounts: {
-        authority: program.provider.wallet.publicKey,
-        game: match.publicKey,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-      },
-      signers: [match],
-      instructions: [await program.account.match.createInstruction(match)]
-    })
-
-    console.log("transaction: ", tx)
-  });
 
   it('Ready Player one!', async () => {
     // Add your test here.
@@ -51,14 +44,13 @@ describe('prize_pool_contract', () => {
     );
     check1Signer = _checkSigner;
     
-    const tx = await program.rpc.registerPlayerOne(
+    const tx = await program.rpc.registerPlayer(
       new anchor.BN(1000),
       nonce,
       {
         accounts: {
-          game: match.publicKey,
-          player1Check: check1.publicKey,
-          player1Vault: vault1.publicKey,
+          playerCheck: check1.publicKey,
+          playerVault: vault1.publicKey,
           checkSigner: check1Signer,
           from: god,
           owner: program.provider.wallet.publicKey,
@@ -94,7 +86,7 @@ describe('prize_pool_contract', () => {
     console.log("Your transaction signature", tx);
   });
 
-  it('Ready Player two and start match!', async () => {
+  it('Ready Player two', async () => {
     // Add your test here.
     let [_checkSigner, nonce] = await anchor.web3.PublicKey.findProgramAddress(
       [check2.publicKey.toBuffer()],
@@ -102,14 +94,13 @@ describe('prize_pool_contract', () => {
     );
     check2Signer = _checkSigner;
     
-    const tx = await program.rpc.registerPlayerTwo(
+    const tx = await program.rpc.registerPlayer(
       new anchor.BN(1000),
       nonce,
       {
         accounts: {
-          game: match.publicKey,
-          player2Check: check2.publicKey,
-          player2Vault: vault2.publicKey,
+          playerCheck: check2.publicKey,
+          playerVault: vault2.publicKey,
           checkSigner: check2Signer,
           from: god,
           owner: program.provider.wallet.publicKey,
@@ -142,15 +133,111 @@ describe('prize_pool_contract', () => {
     );
     assert.ok(vaultAccount.amount.eq(new anchor.BN(1000)));
     console.log("Your transaction signature", tx);
-    
-    
+  });
+
+  /**
+   * Following calls are made from backend where the actual matchmaking happens:
+   * 
+   * @params In order to set up a match, both check accounts public keys need to be provided
+   * !note dependencies can be derived using the fetch method on program account
+   */
+  it('Initialize Match', async () => {
+    const tx = await program.rpc.startMatch(
+      {
+        accounts: {
+          authority: program.provider.wallet.publicKey,
+          game: match.publicKey,
+          player1Check: check1.publicKey,
+          player2Check: check2.publicKey,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        },
+        signers: [match],
+        instructions: [await program.account.match.createInstruction(match)]
+      }
+    );
+    console.log("transaction: ", tx);
+
     const gameData = await program.account.match.fetch(match.publicKey);
-    assert.ok(gameData.player1TokenAccount.equals(vault1.publicKey));
-    assert.ok(gameData.player2TokenAccount.equals(vault2.publicKey));
+    assert.ok(gameData.player1Check.equals(check1.publicKey));
+    assert.ok(gameData.player2Check.equals(check2.publicKey));
     assert.ok(gameData.matchAddress.equals(match.publicKey));
     assert.ok(gameData.wagerAmount.eq(new anchor.BN(2000)));
     assert.ok(gameData.prizeSettled == false);
     console.log("Match is set successfully, on Address ", gameData.matchAddress);
-      
+  });
+
+  it('Conclude Match', async () => {
+    let winner_check = check1.publicKey;
+    let loser_check = check2.publicKey;
+    let winner = await program.account.check.fetch(winner_check);
+    let loser = await program.account.check.fetch(loser_check);
+
+    let [loserCheckPDA, _nonce] = await anchor.web3.PublicKey.findProgramAddress(
+      [loser_check.toBuffer()],
+      program.programId
+    );
+    const tx = await program.rpc.concludeMatch(
+      {
+        accounts: {
+          game: match.publicKey,
+          authority: program.provider.wallet.publicKey,
+          winnerCheck: winner_check,
+          winnerVault: winner.vault,
+          loserCheck: loser_check,
+          loserVault: loser.vault,
+          loserCheckSigner:loserCheckPDA,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        }
+      }
+    );
+    console.log("transaction: ", tx);
+
+    const gameData = await program.account.match.fetch(match.publicKey);
+    assert.ok(gameData.player1Check.equals(check1.publicKey));
+    assert.ok(gameData.player2Check.equals(check2.publicKey));
+    assert.ok(gameData.matchAddress.equals(match.publicKey));
+    assert.ok(gameData.wagerAmount.eq(new anchor.BN(2000)));
+    assert.ok(gameData.winnerCheck.equals(check1.publicKey));
+    assert.ok(gameData.prizeSettled == false);
+    console.log("Match Concluded, on Address ", gameData.matchAddress);
+
+    const winnerCheckData = await program.account.check.fetch(check2.publicKey);
+    assert.ok(winnerCheckData.burned == true);
+    assert.ok(winnerCheckData.amount.eq(new anchor.BN(0)));
+  });
+
+  it('Claim Prize', async () => {
+    //Player 1 wins Player 1 claims
+    let [VaultPDA, _nonce] = await anchor.web3.PublicKey.findProgramAddress(
+      [check1.publicKey.toBuffer()],
+      program.programId
+    );
+    
+    await program.rpc.claimPrize({
+      accounts: {
+        game: match.publicKey,
+        winnerCheck: check1.publicKey,
+        winnerVault: vault1.publicKey,
+        checkSigner: VaultPDA,
+        to: receiver,
+        owner: program.provider.wallet.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      },
+    });
+
+    //If claimed by player 1 then should fail
+    const gameData = await program.account.match.fetch(match.publicKey);
+    assert.ok(gameData.player1Check.equals(check1.publicKey));
+    assert.ok(gameData.player2Check.equals(check2.publicKey));
+    assert.ok(gameData.matchAddress.equals(match.publicKey));
+    assert.ok(gameData.wagerAmount.eq(new anchor.BN(2000)));
+    assert.ok(gameData.winnerCheck.equals(check1.publicKey));
+    assert.ok(gameData.prizeSettled == true);
+    console.log("Prize Claimed on Match ", gameData.matchAddress);
+    
+    const winnerCheckData = await program.account.check.fetch(check1.publicKey);
+    assert.ok(winnerCheckData.burned == true);
+    assert.ok(winnerCheckData.amount.eq(new anchor.BN(0)));
   });
 });
