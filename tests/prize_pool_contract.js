@@ -166,7 +166,7 @@ describe('prize_pool_contract', () => {
     console.log("Match is set successfully, on Address ", gameData.matchAddress);
   });
 
-  it('Conclude Match', async () => {
+  it('Conclude Match with  P1 wins', async () => {
     let winner_check = check1.publicKey;
     let loser_check = check2.publicKey;
     let winner = await program.account.check.fetch(winner_check);
@@ -201,14 +201,83 @@ describe('prize_pool_contract', () => {
     assert.ok(gameData.winnerCheck.equals(check1.publicKey));
     assert.ok(gameData.prizeSettled == false);
     console.log("Match Concluded, on Address ", gameData.matchAddress);
-
+    
     const winnerCheckData = await program.account.check.fetch(check2.publicKey);
     assert.ok(winnerCheckData.burned == true);
     assert.ok(winnerCheckData.amount.eq(new anchor.BN(0)));
+    
+    let [VaultPDA2, _temp] = await anchor.web3.PublicKey.findProgramAddress(
+      [check2.publicKey.toBuffer()],
+      program.programId
+    );
+    
+    //If claimed by player 2 then should fail
+    await program.rpc.claimPrize({
+      accounts: {
+        game: match.publicKey,
+        winnerCheck: check2.publicKey,
+        winnerVault: vault2.publicKey,
+        checkSigner: VaultPDA2,
+        to: receiver,
+        owner: program.provider.wallet.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      },
+    });
+
+    gameData = await program.account.match.fetch(match.publicKey);
+    assert.ok(gameData.player1Check.equals(check1.publicKey));
+    assert.ok(gameData.player2Check.equals(check2.publicKey));
+    assert.ok(gameData.matchAddress.equals(match.publicKey));
+    assert.ok(gameData.wagerAmount.eq(new anchor.BN(2000)));
+    assert.ok(gameData.winnerCheck.equals(check1.publicKey));
+    assert.ok(gameData.prizeSettled == false);
+    console.log("Prize Claimed on Match ", gameData.matchAddress);
+    
+    loserCheckData = await program.account.check.fetch(check2.publicKey);
+    assert.ok(loserCheckData.burned == true);
+    assert.ok(loserCheckData.amount.eq(new anchor.BN(0)));
+    
+    console.log("Player 2 fails to claim the prize on match", gameData.matchAddress);
+    
+    
+    //Player 1 wins Player 1 claims successfully
+    let [VaultPDA, _] = await anchor.web3.PublicKey.findProgramAddress(
+    [check1.publicKey.toBuffer()],
+    program.programId
+    );
+    
+    await program.rpc.claimPrize({
+      accounts: {
+        game: match.publicKey,
+        winnerCheck: check1.publicKey,
+        winnerVault: vault1.publicKey,
+        checkSigner: VaultPDA,
+        to: receiver,
+        owner: program.provider.wallet.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      },
+    });
+    
+    gameData = await program.account.match.fetch(match.publicKey);
+    assert.ok(gameData.player1Check.equals(check1.publicKey));
+    assert.ok(gameData.player2Check.equals(check2.publicKey));
+    assert.ok(gameData.matchAddress.equals(match.publicKey));
+    assert.ok(gameData.wagerAmount.eq(new anchor.BN(2000)));
+    assert.ok(gameData.winnerCheck.equals(check1.publicKey));
+    assert.ok(gameData.prizeSettled == true);
+    console.log("Prize Claimed on Match ", gameData.matchAddress);
+    
+    console.log("Player 1 wins and able to claims the pool ", gameData.matchAddress);
+    winnerCheckData = await program.account.check.fetch(check1.publicKey);
+    assert.ok(winnerCheckData.burned == true);
+    assert.ok(winnerCheckData.amount.eq(new anchor.BN(0)));
+
+
+
   });
 
-  it('Claim Prize', async () => {
-    //Player 1 wins Player 1 claims
+  it('Winner Claims again', async () => {
+    //Should Fail
     let [VaultPDA, _nonce] = await anchor.web3.PublicKey.findProgramAddress(
       [check1.publicKey.toBuffer()],
       program.programId
@@ -226,7 +295,7 @@ describe('prize_pool_contract', () => {
       },
     });
 
-    //If claimed by player 1 then should fail
+    //If claimed by player 2 then should fail
     const gameData = await program.account.match.fetch(match.publicKey);
     assert.ok(gameData.player1Check.equals(check1.publicKey));
     assert.ok(gameData.player2Check.equals(check2.publicKey));
