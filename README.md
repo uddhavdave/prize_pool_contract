@@ -1,4 +1,4 @@
-# Anchor Program for Crypunks
+# Anchor Program for Prize Pool Management
 
 ## Install and Test
 
@@ -12,7 +12,7 @@
 
 1. `Vaults` (Token Accounts) get created with a `Check` account using `registerPlayer` RPC.
 2. Once Backend decides the Match (1v1),  `startMatch` RPC is called with both player `Check` Accounts.
-3. After Unreal engine decides a winner, Backend sends the respective Check(*winner's check pubkey*) via  `concludeMatch` RPC with both players `Vaults` and losers `Check` account and its `PDA`. *Please refer testscript for reference*
+3. After a winner is decided, Backend sends the respective Check(*winner's check pubkey*) via  `concludeMatch` RPC with both players `Vaults` and losers `Check` account and its `PDA`. *Please refer testscript for reference*
 4. **NOTE**: Transfer of funds happen from Loser Vault → Winner Vault in the `concludeMatch` RPC.
 5. Winner gets the Claim Option which will trigger `claimPrize` RPC. This call will transfer funds from Winner Vault → Winner Wallet.   
 ## Status of Features
